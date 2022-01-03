@@ -129,7 +129,16 @@ dmypy.json
 .pyre/
 
 # Data
-/raw_data
+/geodata
 
-# VSCode
+# VSCode & Workspace
 .vscode/
+workspace.*
+.DS_Store
+
+# KEYS & TOKENS
+configs.ini
+
+# Temp files
+/temp
+explore.ipynb
