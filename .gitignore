@@ -143,3 +143,4 @@ configs.ini
 /temp
 explore.ipynb
 *.p
+/cache

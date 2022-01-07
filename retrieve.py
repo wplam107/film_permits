@@ -1,4 +1,3 @@
-from typing import Iterable
 import pandas as pd
 import geopandas as gpd
 import time
@@ -11,7 +10,7 @@ from geopy.geocoders import MapBox
 DATASET = 'tg4x-b46p'
 CONFIG_FILE = 'configs.ini'
 PERMIT_TYPE = 'Shooting Permit'
-FIRST_DAY = '2018-01-01'
+FIRST_DAY = '2017-01-01'
 
 def get_geo_df(file_path: str) -> gpd.GeoDataFrame:
     """
@@ -22,7 +21,7 @@ def get_geo_df(file_path: str) -> gpd.GeoDataFrame:
 
 def get_permit_data(limit: int = 100000) -> list:
     """
-    Function to retrieve film permit data from Socrata, retrieves by most recent first
+    Function to retrieve film permit data from Socrata, retrieves by most recent first.
     """
     config = configparser.ConfigParser()
     config.read(CONFIG_FILE)
@@ -78,4 +77,7 @@ def get_batch_geocoding(intersections: list[str]) -> dict:
                 with open('temp.p', 'wb') as f:
                     pickle.dump(locations, f)
     
+    with open('final.p', 'wb') as f:
+        pickle.dump(locations, f)
+
     return locations

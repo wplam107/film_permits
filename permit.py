@@ -42,33 +42,33 @@ class Permit(object):
         self.parkingheld = split_list
 
     def _ordinal_rep(self, s: str) -> str:
-            """
-            Helper function to convert numerical cardinality to ordinality.
-            """
-            num = re.search(r'[0-9]+\s', s)
-            if num == None:
-                return s
-            else:
-                num = re.search(r'[0-9]+', s)[0]
-                if len(num) > 1:
-                    if (num[-1] == '1') and (num[-2] != '1'):
-                        ord = num + 'st'
-                    elif num[-1] == '2' and (num[-2] != '1'):
-                        ord = num + 'nd'
-                    elif num[-1] == '3' and (num[-2] != '1'):
-                        ord = num + 'rd'
-                    else:
-                        ord = num + 'th'
+        """
+        Helper function to convert numerical cardinality to ordinality.
+        """
+        num = re.search(r'[0-9]+\s', s)
+        if num == None:
+            return s
+        else:
+            num = re.search(r'[0-9]+', s)[0]
+            if len(num) > 1:
+                if (num[-1] == '1') and (num[-2] != '1'):
+                    ord = num + 'st'
+                elif num[-1] == '2' and (num[-2] != '1'):
+                    ord = num + 'nd'
+                elif num[-1] == '3' and (num[-2] != '1'):
+                    ord = num + 'rd'
                 else:
-                    if (num[-1] == '1'):
-                        ord = num + 'st'
-                    elif num[-1] == '2':
-                        ord = num + 'nd'
-                    elif num[-1] == '3':
-                        ord = num + 'rd'
-                    else:
-                        ord = num + 'th'
-                return s.replace(num, ord)
+                    ord = num + 'th'
+            else:
+                if (num[-1] == '1'):
+                    ord = num + 'st'
+                elif num[-1] == '2':
+                    ord = num + 'nd'
+                elif num[-1] == '3':
+                    ord = num + 'rd'
+                else:
+                    ord = num + 'th'
+            return s.replace(num, ord)
 
     def _abb_to_full(self, street: str) -> str:
         """
@@ -99,6 +99,7 @@ class Permit(object):
         if ' Blvd' in street:
             street = street.split(' Blvd')[0] + ' Boulevard'
         
+        street = self._abb_to_full(street)
         street = self._ordinal_rep(street)
         return street    
 
