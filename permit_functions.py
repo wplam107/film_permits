@@ -1,4 +1,5 @@
 import re
+import pandas as pd
 from datetime import datetime
 
 import configparser
@@ -7,6 +8,32 @@ from sodapy import Socrata
 DATASET = 'tg4x-b46p'
 CONFIG_FILE = 'configs.ini'
 PERMIT_TYPE = 'Shooting Permit'
+
+SPECIAL_CASES = {
+    'brooklyn bridge boulevard': 'adams street - brooklyn bridge boulevard',
+    'laguardia place': 'la guardia place',
+    'north powell jr boulevard': 'adam clayton powell jr. boulevard',
+    'adam clayton powell jr boulevard': 'adam clayton powell jr. boulevard',
+    'avenue of the americas': '6th avenue',
+    'fort green place': 'fort greene place',
+    'west 106th street': 'west 106th street / duke ellington',
+    'adam clayton powell boulevard': 'adam clayton powell jr. boulevard',
+
+}
+
+ABB_DICT = {
+    'st': 'street',
+    'ave': 'avenue',
+    'ct': 'court',
+    'blvd': 'boulevard',
+    'sq': 'square',
+    'rd': 'road',
+    'ln': 'lane',
+    'expy': 'expressway',
+    'pkwy': 'parkway',
+    'pl': 'place',
+    'dr': 'drive'
+}
 
 config = configparser.ConfigParser()
 config.read(CONFIG_FILE)
@@ -41,19 +68,11 @@ def _split_addresses(address_str: str) -> list:
     """
     addresses = address_str.split(', ')
     addresses = [
-        ' '.join([ word.capitalize() for word in s.split() ])
+        ' '.join([ word.lower() for word in s.split() ])
         for s in addresses
     ]
 
     return addresses
-
-def _clean_boro(boro: str) -> str:
-    """
-    Helper function to standardize borough names.
-    """
-    boro = boro.capitalize()
-
-    return boro
 
 def _ordinal_rep(s: str) -> str:
     """
@@ -85,18 +104,14 @@ def _ordinal_rep(s: str) -> str:
 
         return s.replace(num, ord)
 
-def _abb_to_full(street: str) -> str:
+def _abb_replace(street: str) -> str:
     """
-    Helper function to convert cardinality abbreviation to full.
+    Helper function to convert cardinal abbreviations.
     """
-    if 'W ' in street:
-        street = 'West ' + street.split('W ')[1]
-    if 'E ' in street:
-        street = 'East ' + street.split('E ')[1]
-    if 'N ' in street:
-        street = 'North ' + street.split('N ')[1]
-    if 'S ' in street:
-        street = 'South ' + street.split('S ')[1]
+    street = re.sub(r'^e |^e. |e(?=[0-9])|e.(?=[0-9])', 'east ', street)
+    street = re.sub(r'^w |^w. |w(?=[0-9])|w.(?=[0-9])', 'west ', street)
+    street = re.sub(r'^n |^n. |n(?=[0-9])|n.(?=[0-9])', 'north ', street)
+    street = re.sub(r'^s |^s. |s(?=[0-9])|s.(?=[0-9])', 'south ', street)
 
     return street
 
@@ -104,52 +119,72 @@ def _standardize_street(street: str) -> str:
     """
     Helper function to standardize street names.
     """
-    if ' St' in street:
-        street = street.split(' St')[0] + ' Street'
-    if ' Ave' in street:
-        street = street.split(' Ave')[0] + ' Avenue'
-    if ' Rd' in street:
-        street = street.split(' Rd')[0] + ' Road'
-    if ' Pkwy' in street:
-        street = street.split(' Pkwy')[0] + ' Parkway'
-    if ' Blvd' in street:
-        street = street.split(' Blvd')[0] + ' Boulevard'
+    for abb in list(ABB_DICT.keys()):
+        full = ABB_DICT[abb]
+        street = re.sub(f' {abb}$', f' {full}', street)
+        street = re.sub(f' {abb}\.$', f' {full}', street)
+        street = re.sub(f' {abb} ', f' {full} ', street)
+        street = re.sub(f' {abb}\. ', f' {full} ', street)
+    street = re.sub(r"'", '', street)
+    street = re.sub(r'^b ', 'beach ', street)
+    street = re.sub(r'^st ', 'saint ', street)
+    street = re.sub(r'^st.', 'saint', street)
+    street = re.sub(r'^mt|^mt.', 'mount', street)
+    street = re.sub(r'^ft|^ft.', 'fort', street)
+    street = re.sub(r'first', '1st', street)
+    street = re.sub(r'second', '2nd', street)
+    street = re.sub(r'third', '3rd', street)
+    street = re.sub(r'fourth', '4th', street)
+    street = re.sub(r'fifth', '5th', street)
+    street = re.sub(r'sixth', '6th', street)
+    street = re.sub(r'seventh', '7th', street)
+    street = re.sub(r'eighth', '8th', street)
+    street = re.sub(r'ninth', '9th', street)
+    street = re.sub(r'tenth', '10th', street)
+    street = re.sub(r'eleventh', '11th', street)
+    street = re.sub(r'twelfth', '12th', street)
 
     return street
 
-def _clean_street(address: str) -> str:
+def clean_street(address: str) -> str:
     """
-    Helper function to clean street strings.
+    Function to clean street strings.
     """
-    address = _ordinal_rep(address)
+    address = address.lower()
     address = _standardize_street(address)
-    address = _abb_to_full(address)
+    address = _abb_replace(address)
+    address = _ordinal_rep(address)
+    if address in SPECIAL_CASES.keys(): # Special cases
+        address = SPECIAL_CASES[address]
 
     return address
 
-def _get_intersections(address: str, boro: str) -> tuple | None:
+def _get_intersections(address: str) -> tuple | None:
     """
     Helper function to extract intersections from address.
     """
-    null_streets = ['Dead Road', 'Dead End', 'Dead Rd']
+    null_streets = ['dead road', 'dead end']
     for s in null_streets:
         if s in address:
             return None
     
-    intersections = address.split(' Between ')
+    intersections = address.split(' between ')
     if len(intersections) != 2:
         return None
     
     main_st = intersections[0]
-    cross_sts = intersections[1].split(' And ')
+    cross_sts = intersections[1].split(' and ')
     total_names = [main_st] + cross_sts
     if len(total_names) != 3:
         return None
 
-    p1 = [_clean_street(main_st), _clean_street(cross_sts[0])] + [boro]
-    p2 = [_clean_street(main_st), _clean_street(cross_sts[1])] + [boro]
+    block_dict = {
+        'main': clean_street(main_st),
+        'cross_1': clean_street(cross_sts[0]),
+        'cross_2': clean_street(cross_sts[1])
+    }
 
-    return (p1, p2)
+    return block_dict
 
 def _clean_datetime(date: str) -> datetime:
     """
@@ -163,16 +198,15 @@ def _clean_datetime(date: str) -> datetime:
     return date
 
 
-### Main Data Cleaning Functions ###
+### Main Data Cleaning/DataFrame Creation Functions ###
 def clean_data(row: dict) -> dict:
     """
     Function to clean film permit row.
     """
     eventid = row['eventid']
-    boro = _clean_boro(row['borough'])
     addresses = _split_addresses(row['parkingheld'])
     addresses = [
-        _get_intersections(address, boro) for address in addresses
+        _get_intersections(address) for address in addresses
     ]
 
     startdate = _clean_datetime(row['startdatetime'])
@@ -182,10 +216,14 @@ def clean_data(row: dict) -> dict:
     category = row['category']
     subcategory = row['subcategoryname']
     country = row['country']
+    boro = row['borough']
+    zipcode = row['zipcode_s']
 
     data_dict = {
         'id': eventid,
         'streets': addresses,
+        'borough': boro,
+        'zipcode': zipcode,
         'startdate': startdate,
         'enddate': enddate,
         'enteredon': enteredon,
@@ -195,3 +233,20 @@ def clean_data(row: dict) -> dict:
     }
 
     return data_dict
+
+def create_film_df(film_permits: list) -> pd.DataFrame:
+    """
+    Function to convert list of film permits to DataFrame from wide-to-long film locations.
+    """
+    shoots = pd.DataFrame(film_permits)
+    locs = pd.DataFrame(shoots['streets'].to_list(), index=shoots['id']).stack()
+    locs = locs.reset_index().drop(columns='level_1')
+    locs.columns = ['id', 'street_dict']
+    df = locs.merge(shoots, how='left', on='id').drop(columns='streets')
+    df['main_st'] = df['street_dict'].map(lambda x: x['main'])
+    df['cross_st_1'] = df['street_dict'].map(lambda x: x['cross_1'])
+    df['cross_st_2'] = df['street_dict'].map(lambda x: x['cross_2'])
+    df.drop(columns='street_dict', inplace=True)
+    df['zipcode'] = df['zipcode'].map(lambda x: x.split(', '))
+
+    return df

@@ -1,45 +1,116 @@
 import numpy as np
 import geopandas as gpd
-from shapely.geometry.linestring import LineString
-from shapely.geometry.multilinestring import MultiLineString
-from shapely.geometry.point import Point
+import shapely.ops
+from shapely.geometry import GeometryCollection
+from shapely.geometry import LineString
+from shapely.geometry import MultiLineString
+from shapely.geometry import Point
+from shapely.geometry import MultiPoint
 
 import plotly.express as px
 
-def clean_county_str(county_str: str) -> list[str]:
-    """
-    Function to clean a string of counties to a list of counties.
-    """
-    county_str_list = county_str.split(';')
-    counties = [ s.split(',')[0] for s in county_str_list ]
+BORO_DICT = {
+    'New York': 'Manhattan',
+    'Kings': 'Brooklyn',
+    'Queens': 'Queens',
+    'Bronx': 'Bronx',
+    'Richmond': 'Staten Island'
+}
 
-    return counties
+def seg_in_zipcode(geo: LineString | MultiLineString, ref_df: gpd.GeoDataFrame) -> list:
+    """
+    Function to return list of zip codes of a street.
+    """
+    temp = ref_df.copy()
+    temp['contains'] = temp['geometry'].map(lambda x: x.intersects(geo))
+    
+    return list(temp.loc[temp['contains'] == True]['zipcode'])
 
-def get_street_linestrings(
-    df: gpd.GeoDataFrame,
+def match_street_geo(
     street: str,
-    boro: str,
-    boro_df: gpd.GeoDataFrame) -> gpd.GeoSeries:
+    zipcodes: list,
+    ref_df: gpd.GeoDataFrame) -> LineString | MultiLineString:
     """
-    Function to get GeoSeries geometry of street.
+    Function to match geometry to street name.
     """
-    df = df.loc[df['name'] == street]
-    temp = df.loc[df['boros'].map(lambda x: boro in x)]
-    if len(temp) < 1:
-        temp = df.loc[df['boros'].map(lambda x: 'Missing' in x)].reset_index()
-        if len(temp) > 0:
-            geo = boro_df.loc[boro_df['BoroName'] == boro][0]
-            return geo
+    temp = ref_df.query(f'street == "{street}"')
+    if len(temp) == 1:
+        if isinstance(temp.iloc[0]['geometry'], LineString):
+            return MultiLineString([temp.iloc[0]['geometry']]).geoms
         else:
-            return gpd.GeoSeries([])
+            return temp.iloc[0]['geometry'].geoms
+    elif len(temp) == 0:
+        return None
     else:
-        geo = temp['geometry']
-        return geo
+        for zc in list(temp['zipcode']):
+            if zc in zipcodes:
+                temp = temp.query(f'zipcode == "{zc}"')
+                if isinstance(temp.iloc[0]['geometry'], LineString):
+                    return MultiLineString([temp.iloc[0]['geometry']]).geoms
+                else:
+                    return temp.iloc[0]['geometry'].geoms
+        return None
 
-def get_intersec_coords(
-    street_1: LineString | MultiLineString,
-    street_2: LineString | MultiLineString) -> Point:
-    pass
+def get_held_geometry(row) -> GeometryCollection:
+    """
+    Function to get geometry of parking held.
+    """
+    # Determine if streets intersect
+    ms = MultiLineString(row['ms_geom'])
+    cs1 = MultiLineString(row['cs1_geom'])
+    cs2 = MultiLineString(row['cs2_geom'])
+
+    is_int_1 = ms.intersects(cs1)
+    is_int_2 = ms.intersects(cs2)
+
+    # Add segment if streets do not intersect
+    if is_int_1 == False:
+        nms = MultiLineString([*ms.geoms, LineString(shapely.ops.nearest_points(ms, cs1))])
+        ncs1 = MultiLineString([*cs1.geoms, LineString(shapely.ops.nearest_points(ms, cs1))])
+        ms = nms
+        cs1 = ncs1
+    if is_int_2 == False:
+        nms = MultiLineString([*ms.geoms, LineString(shapely.ops.nearest_points(ms, cs2))])
+        ncs2 = MultiLineString([*cs2.geoms, LineString(shapely.ops.nearest_points(ms, cs2))])
+        ms = nms
+        cs2 = ncs2
+
+    # Get intersection points
+    intersect_1 = ms.intersection(cs1)
+    intersect_2 = ms.intersection(cs2)
+    if isinstance(intersect_1, MultiPoint):
+        intersect_1 = intersect_1.geoms[0]
+    if isinstance(intersect_2, MultiPoint):
+        intersect_2 = intersect_2.geoms[0]
+    if isinstance(intersect_1, LineString | MultiLineString | GeometryCollection):
+        intersect_1 = intersect_1.representative_point()
+    if isinstance(intersect_2, LineString | MultiLineString | GeometryCollection):
+        intersect_2 = intersect_2.representative_point()
+
+
+    # Find center point between intersections and draw center circle
+    try:
+        x1 = intersect_1.x
+        x2 = intersect_2.x
+        y1 = intersect_1.y
+        y2 = intersect_2.y
+        x = (x1 + x2) / 2
+        y = (y1 + y2) / 2
+        center = Point(x, y)
+        buffer = center.distance(intersect_1)
+        circle = center.buffer(buffer)
+    except:
+        return None
+
+    # Get all segments that intersect circle
+    segments = []
+    for geo in ms.geoms:
+        if geo.intersects(circle):
+            segments.append(geo)
+
+    result = MultiLineString(segments)
+
+    return result.geoms
 
 def plot_street(df: gpd.GeoDataFrame, street: str, boro: str, boro_df: gpd.GeoDataFrame):
     """
