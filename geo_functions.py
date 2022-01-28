@@ -110,7 +110,7 @@ def get_held_geometry(row) -> GeometryCollection:
 
     result = MultiLineString(segments)
 
-    return result.geoms
+    return result
 
 def plot_street(df: gpd.GeoDataFrame, street: str, boro: str, boro_df: gpd.GeoDataFrame):
     """
