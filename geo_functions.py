@@ -63,17 +63,18 @@ def get_held_geometry(row) -> GeometryCollection:
     is_int_1 = ms.intersects(cs1)
     is_int_2 = ms.intersects(cs2)
 
+    # Improvements need to be made
     # Add segment if streets do not intersect
-    if is_int_1 == False:
-        nms = MultiLineString([*ms.geoms, LineString(shapely.ops.nearest_points(ms, cs1))])
-        ncs1 = MultiLineString([*cs1.geoms, LineString(shapely.ops.nearest_points(ms, cs1))])
-        ms = nms
-        cs1 = ncs1
-    if is_int_2 == False:
-        nms = MultiLineString([*ms.geoms, LineString(shapely.ops.nearest_points(ms, cs2))])
-        ncs2 = MultiLineString([*cs2.geoms, LineString(shapely.ops.nearest_points(ms, cs2))])
-        ms = nms
-        cs2 = ncs2
+    # if is_int_1 == False:
+    #     nms = MultiLineString([*ms.geoms, LineString(shapely.ops.nearest_points(ms, cs1))])
+    #     ncs1 = MultiLineString([*cs1.geoms, LineString(shapely.ops.nearest_points(ms, cs1))])
+    #     ms = nms
+    #     cs1 = ncs1
+    # if is_int_2 == False:
+    #     nms = MultiLineString([*ms.geoms, LineString(shapely.ops.nearest_points(ms, cs2))])
+    #     ncs2 = MultiLineString([*cs2.geoms, LineString(shapely.ops.nearest_points(ms, cs2))])
+    #     ms = nms
+    #     cs2 = ncs2
 
     # Get intersection points
     intersect_1 = ms.intersection(cs1)
