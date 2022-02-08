@@ -1,9 +1,11 @@
+from unicodedata import name
 import dash
 from dash import dcc
 from dash import html
 from dash.dependencies import Input, Output
 
-import plotly.express as px
+# import plotly.express as px
+import plotly.graph_objects as go
 
 import geopandas as gpd
 import pandas as pd
@@ -17,31 +19,51 @@ NYC_LAT_LONG = {'lon': -74.0060, 'lat': 40.7128}
 
 app = dash.Dash(__name__)
 
-with open('data.p', 'rb') as f:
+with open('film_df.p', 'rb') as f:
     df = gpd.GeoDataFrame(pickle.load(f))
 
 df['startdate'] = pd.to_datetime(df['startdate']).dt.date
 df['enddate'] = pd.to_datetime(df['enddate']).dt.date
 df['enteredon'] = pd.to_datetime(df['enteredon']).dt.date
 
+default_map_fig = go.Figure(go.Scattermapbox(
+    lat=[None],
+    lon=[None],
+    name='Enter date range',
+))
+
+default_map_fig.update_layout(
+    mapbox={
+        'style': 'carto-positron',
+        'center': NYC_LAT_LONG,
+        'zoom': 10
+    },
+    height=900,
+    width=1000
+)
+
 app.layout = html.Div(children=[
-    html.H1(children='Hello Dash'),
+    html.H1(children='NYC Film Shoots'),
 
     html.Div(children='''
-        Dash: A web application framework for your data.
+        Map of blocks shutdown for NYC film shoots
     '''),
 
     html.Div([
         dcc.DatePickerRange(
             id='date-picker',
-            start_date=df['startdate'].min(),
-            end_date=df['enddate'].max(),
+            min_date_allowed=df['startdate'].min(),
+            max_date_allowed=df['enddate'].max(),
             initial_visible_month=df['startdate'].min()
         )
     ]),
 
-    dcc.Graph(
-        id='film-map'
+    dcc.Loading(
+        id='container-map',
+        type='default',
+        children=dcc.Graph(
+            id='film-map'
+        )
     )
 ])
 
@@ -51,20 +73,40 @@ app.layout = html.Div(children=[
     Input('date-picker', 'end_date')
 )
 def fig_by_date(startdate: datetime.date, enddate: datetime.date):
-    lats = []
-    lons = []
-    data = []
+
+    if (startdate == None) or (enddate == None):
+        return default_map_fig
 
     startdate = datetime.datetime.strptime(startdate, '%Y-%m-%d').date()
     enddate = datetime.datetime.strptime(enddate, '%Y-%m-%d').date()
 
-    temp = df.loc[(df['startdate'] >= startdate) & (df['enddate'] <= enddate)].copy()
-    temp['hoverdata'] = temp.apply(
-        lambda x: f"ID: {x['id']}, Production Origin: {x['origin']}, Category: {x['category']}, Subcategory: {x['subcategory']}",
-        axis=1
+    filtered_df = df.loc[(df['startdate'] >= startdate) & (df['enddate'] <= enddate)].copy()
+    filtered_df['parking_held'] = filtered_df.apply(
+        lambda x: x['main_st'].upper() + ' between ' + x['cross_st_1'].upper() + ' and ' + x['cross_st_2'].upper(), axis=1
     )
 
-    for feature, datum in zip(temp['geometry'], temp['hoverdata']):
+    lats = []
+    lons = []
+    ids = []
+    cats = []
+    subcats = []
+    countries = []
+    sdates = []
+    edates = []
+    phs = []
+
+    data = zip(
+        filtered_df['geometry'],
+        filtered_df['id'],
+        filtered_df['category'],
+        filtered_df['subcategory'],
+        filtered_df['origin'],
+        filtered_df['startdate'],
+        filtered_df['enddate'],
+        filtered_df['parking_held']
+    )
+
+    for feature, id_, cat, subcat, country, sdate, edate, ph in data:
         if isinstance(feature, shapely.geometry.linestring.LineString):
             linestrings = [feature]
         elif isinstance(feature, shapely.geometry.multilinestring.MultiLineString):
@@ -75,20 +117,52 @@ def fig_by_date(startdate: datetime.date, enddate: datetime.date):
             x, y = linestring.xy
             lats = np.append(lats, y)
             lons = np.append(lons, x)
-            data = np.append(data, [datum]*len(y))
+            ids = np.append(ids, [id_]*len(y))
+            cats = np.append(cats, [cat]*len(y))
+            subcats = np.append(subcats, [subcat]*len(y))
+            countries = np.append(countries, [country]*len(y))
+            sdates = np.append(sdates, [sdate]*len(y))
+            edates = np.append(edates, [edate]*len(y))
+            phs = np.append(phs, [ph]*len(y))
             lats = np.append(lats, None)
             lons = np.append(lons, None)
-            data = np.append(data, None)
+            ids = np.append(ids, None)
+            cats = np.append(cats, None)
+            subcats = np.append(subcats, None)
+            countries = np.append(countries, None)
+            sdates = np.append(sdates, None)
+            edates = np.append(edates, None)
+            phs = np.append(phs, None)
 
-    fig = px.line_mapbox(
+    fig = go.Figure(go.Scattermapbox(
+        mode='lines',
         lat=lats,
         lon=lons,
-        text=data,
-        mapbox_style="carto-positron",
-        center=NYC_LAT_LONG,
+        customdata=np.stack((ids, cats, subcats, countries, sdates, edates, phs), axis=-1),
+        hovertemplate='<br>'.join([
+            '<b>Permit ID:</b> %{customdata[0]}',
+            '<b>Category:</b> %{customdata[1]}',
+            '<b>Subcategory:</b> %{customdata[2]}',
+            '<b>Country:</b> %{customdata[3]}',
+            '<b>Start Date:</b> %{customdata[4]}',
+            '<b>End Date:</b> %{customdata[5]}',
+            '<b>Parking Held:</b> %{customdata[6]}'
+        ]),
+        name=''
+    ))
+
+    fig.update_layout(
+        title=f'Data Range: {startdate} - {enddate}',
+        mapbox={
+            'style': 'carto-positron',
+            'center': NYC_LAT_LONG,
+            'zoom': 10
+        },
         height=900,
-        width=1000,
-        zoom=10)
+        width=1000
+    )
+
+    # fig.update_traces(hover_template='Permit ID: %{}')
 
     return fig
 
