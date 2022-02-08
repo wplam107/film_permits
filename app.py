@@ -1,10 +1,11 @@
 from unicodedata import name
+from click import style
 import dash
 from dash import dcc
 from dash import html
 from dash.dependencies import Input, Output
 
-# import plotly.express as px
+import plotly.express as px
 import plotly.graph_objects as go
 
 import geopandas as gpd
@@ -16,11 +17,24 @@ import datetime
 import pickle
 
 NYC_LAT_LONG = {'lon': -74.0060, 'lat': 40.7128}
+FILM_PERMITS = 'film_df.p'
+ZIP_CODES = 'zip_codes.p'
+BORO_DICT = {
+    'New York': 'Manhattan',
+    'Kings': 'Brooklyn',
+    'Queens': 'Queens',
+    'Bronx': 'Bronx',
+    'Richmond': 'Staten Island'
+}
 
-app = dash.Dash(__name__)
+external_stylesheets = ['https://taniarascia.github.io/primitive/css/main.css']
+app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 
-with open('film_df.p', 'rb') as f:
+with open(FILM_PERMITS, 'rb') as f:
     df = gpd.GeoDataFrame(pickle.load(f))
+
+with open(ZIP_CODES, 'rb') as f:
+    zip_codes = gpd.GeoDataFrame(pickle.load(f))
 
 df['startdate'] = pd.to_datetime(df['startdate']).dt.date
 df['enddate'] = pd.to_datetime(df['enddate']).dt.date
@@ -31,7 +45,6 @@ default_map_fig = go.Figure(go.Scattermapbox(
     lon=[None],
     name='Enter date range',
 ))
-
 default_map_fig.update_layout(
     mapbox={
         'style': 'carto-positron',
@@ -59,11 +72,11 @@ app.layout = html.Div(children=[
     ]),
 
     dcc.Loading(
-        id='container-map',
+        id='container-figures',
         type='default',
-        children=dcc.Graph(
-            id='film-map'
-        )
+        children=[
+            dcc.Graph(id='film-map')
+        ]
     )
 ])
 
@@ -76,6 +89,8 @@ def fig_by_date(startdate: datetime.date, enddate: datetime.date):
 
     if (startdate == None) or (enddate == None):
         return default_map_fig
+    if startdate > enddate:
+        return default_map_fig
 
     startdate = datetime.datetime.strptime(startdate, '%Y-%m-%d').date()
     enddate = datetime.datetime.strptime(enddate, '%Y-%m-%d').date()
@@ -84,6 +99,19 @@ def fig_by_date(startdate: datetime.date, enddate: datetime.date):
     filtered_df['parking_held'] = filtered_df.apply(
         lambda x: x['main_st'].upper() + ' between ' + x['cross_st_1'].upper() + ' and ' + x['cross_st_2'].upper(), axis=1
     )
+
+    temp = pd.DataFrame(filtered_df['zipcode'].to_list(), index=filtered_df['id']).stack().reset_index()
+    temp.drop(columns='level_1', inplace=True)
+    temp.columns = ['permit_id', 'zip_code']
+    temp = temp.groupby('zip_code')['permit_id'].unique().reset_index()
+    temp['permit_count'] = temp['permit_id'].map(lambda x: len(x))
+    temp = temp[['zip_code', 'permit_count']]
+
+    counts = zip_codes.merge(temp, left_on='zipcode', right_on='zip_code', how='left')
+    counts = counts[['zipcode', 'permit_count', 'geometry']]
+    counts['permit_count'] = counts['permit_count'].fillna(0)
+    counts['permit_count'] = counts['permit_count'].astype('int')
+    counts.set_index('zipcode', inplace=True)
 
     lats = []
     lons = []
@@ -134,7 +162,7 @@ def fig_by_date(startdate: datetime.date, enddate: datetime.date):
             edates = np.append(edates, None)
             phs = np.append(phs, None)
 
-    fig = go.Figure(go.Scattermapbox(
+    scatter = go.Scattermapbox(
         mode='lines',
         lat=lats,
         lon=lons,
@@ -149,20 +177,38 @@ def fig_by_date(startdate: datetime.date, enddate: datetime.date):
             '<b>Parking Held:</b> %{customdata[6]}'
         ]),
         name=''
-    ))
-
-    fig.update_layout(
-        title=f'Data Range: {startdate} - {enddate}',
-        mapbox={
-            'style': 'carto-positron',
-            'center': NYC_LAT_LONG,
-            'zoom': 10
-        },
-        height=900,
-        width=1000
     )
 
-    # fig.update_traces(hover_template='Permit ID: %{}')
+    fig = px.choropleth_mapbox(
+        counts,
+        geojson=counts['geometry'],
+        locations=counts.index,
+        color='permit_count',
+        custom_data=['permit_count'],
+        title=f'Data Range: {startdate} - {enddate}',
+        opacity=0.1,
+        mapbox_style='carto-positron',
+        center=NYC_LAT_LONG,
+        zoom=10,
+        height=800,
+        width=800
+    )
+    fig.update_traces(
+        hovertemplate='<b>Zip Code:</b> %{location}<br><b>Permit Count:</b> %{customdata[0]}'
+    )
+    
+    fig.add_trace(scatter)
+
+    # fig.update_layout(
+    #     title=f'Data Range: {startdate} - {enddate}',
+    #     mapbox={
+    #         'style': 'carto-positron',
+    #         'center': NYC_LAT_LONG,
+    #         'zoom': 10
+    #     },
+    #     height=900,
+    #     width=1000
+    # )
 
     return fig
 

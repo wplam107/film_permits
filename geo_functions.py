@@ -55,13 +55,13 @@ def get_held_geometry(row) -> GeometryCollection:
     """
     Function to get geometry of parking held.
     """
-    # Determine if streets intersect
+    # Streets intersections
     ms = MultiLineString(row['ms_geom'])
     cs1 = MultiLineString(row['cs1_geom'])
     cs2 = MultiLineString(row['cs2_geom'])
 
-    is_int_1 = ms.intersects(cs1)
-    is_int_2 = ms.intersects(cs2)
+    # is_int_1 = ms.intersects(cs1)
+    # is_int_2 = ms.intersects(cs2)
 
     # Improvements need to be made
     # Add segment if streets do not intersect
@@ -103,13 +103,7 @@ def get_held_geometry(row) -> GeometryCollection:
     except:
         return None
 
-    # Get all segments that intersect circle
-    segments = []
-    for geo in ms.geoms:
-        if geo.intersects(circle):
-            segments.append(geo)
-
-    result = MultiLineString(segments)
+    result = circle.intersection(ms)
 
     return result
 
