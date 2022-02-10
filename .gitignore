@@ -129,7 +129,8 @@ dmypy.json
 .pyre/
 
 # Data
-/geodata
+/src/data_processing/data
+/src/app/data
 
 # VSCode & Workspace
 .vscode/
@@ -140,7 +141,6 @@ workspace.*
 configs.ini
 
 # Temp files
-/temp
 explore.ipynb
 *.p
 /cache
