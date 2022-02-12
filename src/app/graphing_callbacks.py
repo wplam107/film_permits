@@ -9,7 +9,6 @@ import pandas as pd
 import shapely.geometry
 import numpy as np
 import json
-import pickle
 
 
 NYC_LAT_LONG = {'lon': -74.0060, 'lat': 40.7128}
