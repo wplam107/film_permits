@@ -1,3 +1,4 @@
+# Image: https://github.com/OSGeo/gdal/tree/master/docker
 FROM osgeo/gdal:ubuntu-small-latest
 
 # Install pip for PyPI installs
@@ -10,4 +11,4 @@ RUN pip install -r requirements.txt
 
 COPY . ./
 
-CMD gunicorn -b 0.0.0.0:80 app:server
+CMD ["gunicorn", "app:server"]

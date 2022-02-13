@@ -5,6 +5,7 @@ import pandas as pd
 import datetime
 import json
 import pickle
+import os
 
 import graphing_callbacks
 
@@ -129,4 +130,4 @@ def pick_dates(startdate: datetime.date, enddate: datetime.date):
     return json.dumps(filtered_df.__geo_interface__), json.dumps(counts.__geo_interface__)
 
 if __name__ == '__main__':
-    app.run_server(debug=True, host="0.0.0.0", port=8080, use_reloader=False)
+    app.run_server()
