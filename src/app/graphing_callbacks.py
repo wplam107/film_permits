@@ -52,8 +52,8 @@ default_bar_fig.update_xaxes(showticklabels=False)
 
 @callback(
     Output('film-map', 'figure'),
-    Input('filtered-shoots', 'data'),
-    Input('zipcode-shoots', 'data')
+    Input('filtered-shoots-store', 'data'),
+    Input('zipcode-shoots-store', 'data')
 )
 def fig_by_date(filtered_json, zipcode_json):
     if filtered_json == None:
@@ -61,6 +61,7 @@ def fig_by_date(filtered_json, zipcode_json):
 
     j = json.loads(filtered_json)
     filtered_df = gpd.GeoDataFrame.from_features(j)
+    
     filtered_df['startdate'] = pd.to_datetime(filtered_df['startdate']).dt.date
     filtered_df['enddate'] = pd.to_datetime(filtered_df['enddate']).dt.date
 
@@ -75,7 +76,9 @@ def fig_by_date(filtered_json, zipcode_json):
     countries = []
     sdates = []
     edates = []
-    phs = []
+    mss = []
+    cs1s = []
+    cs2s = []
 
     data = zip(
         filtered_df['geometry'],
@@ -85,10 +88,12 @@ def fig_by_date(filtered_json, zipcode_json):
         filtered_df['origin'],
         filtered_df['startdate'],
         filtered_df['enddate'],
-        filtered_df['parking_held']
+        filtered_df['main_st'],
+        filtered_df['cross_st_1'],
+        filtered_df['cross_st_2']
     )
 
-    for feature, id_, cat, subcat, country, sdate, edate, ph in data:
+    for feature, id_, cat, subcat, country, sdate, edate, ms, cs1, cs2 in data:
         if isinstance(feature, shapely.geometry.linestring.LineString):
             linestrings = [feature]
         elif isinstance(feature, shapely.geometry.multilinestring.MultiLineString):
@@ -105,7 +110,9 @@ def fig_by_date(filtered_json, zipcode_json):
             countries = np.append(countries, [country]*len(y))
             sdates = np.append(sdates, [sdate]*len(y))
             edates = np.append(edates, [edate]*len(y))
-            phs = np.append(phs, [ph]*len(y))
+            mss = np.append(mss, [ms]*len(y))
+            cs1s = np.append(cs1s, [cs1]*len(y))
+            cs2s = np.append(cs2s, [cs2]*len(y))
             lats = np.append(lats, None)
             lons = np.append(lons, None)
             ids = np.append(ids, None)
@@ -114,13 +121,15 @@ def fig_by_date(filtered_json, zipcode_json):
             countries = np.append(countries, None)
             sdates = np.append(sdates, None)
             edates = np.append(edates, None)
-            phs = np.append(phs, None)
+            mss = np.append(mss, None)
+            cs1s = np.append(cs1s, None)
+            cs2s = np.append(cs2s, None)
 
     scatter = go.Scattermapbox(
         mode='lines',
         lat=lats,
         lon=lons,
-        customdata=np.stack((ids, cats, subcats, countries, sdates, edates, phs), axis=-1),
+        customdata=np.stack((ids, cats, subcats, countries, sdates, edates, mss, cs1s, cs2s), axis=-1),
         hovertemplate='<br>'.join([
             '<b>Permit ID:</b> %{customdata[0]}',
             '<b>Category:</b> %{customdata[1]}',
@@ -128,7 +137,9 @@ def fig_by_date(filtered_json, zipcode_json):
             '<b>Country:</b> %{customdata[3]}',
             '<b>Start Date:</b> %{customdata[4]}',
             '<b>End Date:</b> %{customdata[5]}',
-            '<b>Parking Held:</b> %{customdata[6]}'
+            '<b>Main Street:</b> %{customdata[6]}',
+            '<b>Cross Street 1:</b> %{customdata[7]}',
+            '<b>Cross Street 2:</b> %{customdata[8]}'
         ]),
         name=''
     )
@@ -163,7 +174,7 @@ def fig_by_date(filtered_json, zipcode_json):
 
 @callback(
     Output('zipcode-bar', 'figure'),
-    Input('zipcode-shoots', 'data')
+    Input('zipcode-shoots-store', 'data')
 )
 def top_ten_zc(zipcode_json):
     if zipcode_json == None:
@@ -171,10 +182,18 @@ def top_ten_zc(zipcode_json):
 
     c = json.loads(zipcode_json)
     counts = gpd.GeoDataFrame.from_features(c)
+
     counts.sort_values('permit_count', ascending=False, inplace=True)
     counts = counts.iloc[:10]
 
-    fig = go.Figure(px.bar(data_frame=counts, x='zipcode', y='permit_count', labels={'permit_count': 'Permit Count', 'zipcode': 'Zip Code'}))
+    fig = go.Figure(
+        px.bar(
+            data_frame=counts,
+            x='zipcode',
+            y='permit_count',
+            labels={'permit_count': 'Permit Count', 'zipcode': 'Zip Code'}
+        )
+    )
     fig.update_layout(
         title={
             'text': 'Top Zip Codes',
